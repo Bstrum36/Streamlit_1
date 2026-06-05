@@ -13,7 +13,7 @@ if uploaded:
     st.write(f"Size: {image.size} | Mode: {image.mode}")
 
 
-st.title("📸 Camera 🔼")
+st.title("📸 Camera 📸")
 
 # --- Capture ---
 img_file = st.camera_input("Take a photo")
