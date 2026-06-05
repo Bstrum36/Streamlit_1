@@ -12,7 +12,9 @@ max_size = st.slider("Image size (px)", min_value=100, max_value=2400, value=102
 uploaded = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp", "webp"])
 if uploaded:
     image = Image.open(uploaded)
-    image.thumbnail((max_size, max_size))
+    ratio = max_size / image.width
+    new_height = int(image.height * ratio)
+    image = image.resize((max_size, new_height), Image.LANCZOS)
     st.image(image, caption=uploaded.name, use_container_width=True)
     st.write(f"Size: {image.size} | Mode: {image.mode}")
 
