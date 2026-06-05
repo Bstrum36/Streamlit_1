@@ -6,9 +6,13 @@ from PIL import Image
 
 
 st.title("🔼 Upload an Image 🔼")
+
+max_size = st.slider("Image size (px)", min_value=100, max_value=2400, value=1024, step=50)
+
 uploaded = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp", "webp"])
 if uploaded:
     image = Image.open(uploaded)
+    image.thumbnail((max_size, max_size))
     st.image(image, caption=uploaded.name, use_container_width=True)
     st.write(f"Size: {image.size} | Mode: {image.mode}")
 
