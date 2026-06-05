@@ -5,7 +5,7 @@ from PIL import Image
 
 
 
-st.title(" Upload an Image ")
+st.title("🔼 Upload an Image 🔼")
 uploaded = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp", "webp"])
 if uploaded:
     image = Image.open(uploaded)
@@ -13,7 +13,7 @@ if uploaded:
     st.write(f"Size: {image.size} | Mode: {image.mode}")
 
 
-st.title("📸 Camera")
+st.title("📸 Camera 🔼")
 
 # --- Capture ---
 img_file = st.camera_input("Take a photo")
