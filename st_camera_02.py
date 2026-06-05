@@ -15,7 +15,7 @@ if uploaded:
     ratio = max_size / image.width
     new_height = int(image.height * ratio)
     image = image.resize((max_size, new_height), Image.LANCZOS)
-    st.image(image, caption=uploaded.name, use_container_width=True)
+    st.image(image, caption=uploaded.name, width=max_size)
     st.write(f"Size: {image.size} | Mode: {image.mode}")
 
 
