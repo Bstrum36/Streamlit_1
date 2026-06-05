@@ -5,7 +5,7 @@ from PIL import Image
 
 
 
-st.title("🖼️ Take a picture 📸")
+st.title("📸 Take a picture 📸")
 uploaded = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp", "webp"])
 if uploaded:
     image = Image.open(uploaded)
