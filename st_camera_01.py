@@ -2,7 +2,7 @@
 import streamlit as st
 from PIL import Image
 import numpy as np
-import opencv-python-headless
+import cv2
 import io
 
 st.title("📷 Single Frame Capture")
