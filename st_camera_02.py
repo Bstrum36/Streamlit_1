@@ -1,56 +1,37 @@
-import os
 import time
-from pathlib import Path
+from io import BytesIO
 
 import streamlit as st
 from PIL import Image
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+IMAGE_EXTS = ["jpg", "jpeg", "png", "bmp", "webp"]
 
-# --- Session state defaults ---
-for key, val in [("current_dir", os.path.expanduser("~")),
-                 ("running", False),
-                 ("idx", 0)]:
+for key, val in [("running", False), ("idx", 0), ("file_data", [])]:
     if key not in st.session_state:
         st.session_state[key] = val
 
-# --- Sidebar: navigation + controls ---
+# --- Sidebar ---
 with st.sidebar:
-    st.header("📁 Navigate")
+    st.header("📁 Upload Images")
+    uploaded = st.file_uploader(
+        "Open a folder, press Ctrl+A to select all, then click Open",
+        type=IMAGE_EXTS,
+        accept_multiple_files="directory",
+        label_visibility="visible",
+    )
 
-    current = st.session_state.current_dir
-
-    # Breadcrumb buttons
-    parts = Path(current).parts
-    for i, part in enumerate(parts):
-        crumb_path = str(Path(*parts[: i + 1]))
-        if st.button(part, key=f"crumb_{i}", use_container_width=True):
-            st.session_state.current_dir = crumb_path
+    # Load file bytes into session state whenever the selection changes
+    if uploaded is not None:
+        names = [f.name for f in uploaded]
+        stored = [d["name"] for d in st.session_state.file_data]
+        if names != stored:
+            st.session_state.file_data = [
+                {"name": f.name, "data": f.read()} for f in uploaded
+            ]
             st.session_state.idx = 0
             st.session_state.running = False
-            st.rerun()
 
-    st.divider()
-
-    # Subfolder list
-    try:
-        subdirs = sorted(
-            d for d in os.listdir(current)
-            if os.path.isdir(os.path.join(current, d)) and not d.startswith(".")
-        )
-    except PermissionError:
-        subdirs = []
-        st.warning("Permission denied.")
-
-    if subdirs:
-        choice = st.selectbox("Subfolders", subdirs, label_visibility="collapsed")
-        if st.button("Open ▶", use_container_width=True):
-            st.session_state.current_dir = os.path.join(current, choice)
-            st.session_state.idx = 0
-            st.session_state.running = False
-            st.rerun()
-    else:
-        st.caption("No subfolders")
+    total = len(st.session_state.file_data)
 
     st.divider()
     st.header("⚙️ Settings")
@@ -59,38 +40,34 @@ with st.sidebar:
 
     st.divider()
     st.header("▶️ Slideshow")
-
-    images = sorted(
-        p for p in Path(current).iterdir()
-        if p.suffix.lower() in IMAGE_EXTS
-    )
-    total = len(images)
-    st.caption(f"{total} image(s) in folder")
+    st.caption(f"{total} image(s) loaded")
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("▶ Run", use_container_width=True, disabled=total == 0):
             st.session_state.running = True
+            st.session_state.idx = 0
             st.rerun()
     with col2:
         if st.button("⏹ Stop", use_container_width=True, disabled=not st.session_state.running):
             st.session_state.running = False
 
 # --- Main area ---
-st.title("🖼️ Image Directory Slideshow")
-st.caption(f"`{current}`")
+st.title("🖼️ Image Slideshow")
+
+total = len(st.session_state.file_data)
 
 if total == 0:
-    st.info("No images in this folder — navigate to a folder with images.")
+    st.info("Use the sidebar uploader to select images. Navigate to your folder and press Ctrl+A to select all images at once.")
 else:
     idx = st.session_state.idx % total
-    img_path = images[idx]
-    image = Image.open(img_path)
+    entry = st.session_state.file_data[idx]
+    image = Image.open(BytesIO(entry["data"]))
     orig_size = image.size
     ratio = max_size / image.width
     image = image.resize((max_size, int(image.height * ratio)), Image.LANCZOS)
     caption = (
-        f"{img_path.name}  |  {idx + 1} of {total}  |  "
+        f"{entry['name']}  |  {idx + 1} of {total}  |  "
         f"Original: {orig_size[0]}×{orig_size[1]} px  |  Displayed: {max_size}×{int(orig_size[1] * ratio)} px"
     )
     st.image(image, caption=caption, width=max_size)
