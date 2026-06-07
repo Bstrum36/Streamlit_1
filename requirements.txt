@@ -1,10 +1,7 @@
-streamlit>=1.38,<2
-pandas>=2.2,<3
-altair>=5.2,<6
-snowflake-connector-python>=3.10,<4
+streamlit
+
 python-dotenv>=1.0,<2
-pyarrow>=18
-matplotlib>=3.8,<4
+
 opencv-python-headless
 pathlib
 tkinter
