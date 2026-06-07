@@ -1,7 +1,2 @@
-streamlit
-
-python-dotenv>=1.0,<2
-
-opencv-python-headless
-pathlib
-tkinter
+﻿streamlit
+Pillow
