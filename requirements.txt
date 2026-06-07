@@ -6,4 +6,4 @@ python-dotenv>=1.0,<2
 pyarrow>=18
 matplotlib>=3.8,<4
 opencv-python-headless
-pathlibstreamlit
+pathlib
