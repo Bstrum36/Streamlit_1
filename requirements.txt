@@ -1,6 +1,6 @@
 ﻿streamlit
 Pillow
-opencv-python-headles
+opencv-python-headless
 PIL
 numpy
 ultralytics
