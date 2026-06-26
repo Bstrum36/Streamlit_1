@@ -1,2 +1,6 @@
 ﻿streamlit
 Pillow
+opencv-python-headles
+PIL
+numpy
+ultralytics
