@@ -19,7 +19,7 @@ model = load_model("yolo26l-seg.pt")
 # ── Sidebar controls ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Settings")
-    confidence = st.slider("Confidence threshold", 0.1, 1.0, 0.4, 0.05)
+    confidence = st.slider("Confidence threshold", 0.1, 1.0, 0.25, 0.05)
     iou        = st.slider("NMS IoU threshold",    0.1, 1.0, 0.5, 0.05)
     source     = st.radio("Input source", ["Image", "Video", "Webcam"])
 
@@ -85,25 +85,42 @@ elif source == "Video":
 
 # ── WEBCAM ─────────────────────────────────────────────────────────────────────
 elif source == "Webcam":
-    st.info("Webcam capture runs locally — make sure your browser grants camera access.")
-    run  = st.toggle("Start webcam")
-    placeholder = st.empty()
+    cam_mode = st.radio("Capture mode", ["Single Frame", "Continuous Stream"], horizontal=True)
 
-    if run:
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            st.error("Could not open webcam. Check that no other app is using it.")
-        else:
-            stop = st.button("⏹ Stop webcam")
-            while not stop:
-                ret, frame = cap.read()
-                if not ret:
-                    st.warning("No frame received.")
-                    break
-                annotated = detect(frame)
-                placeholder.image(
-                    cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                    use_container_width=True,
-                    channels="RGB"
-                )
-            cap.release()
+    if cam_mode == "Single Frame":
+        img_file = st.camera_input("Take a photo")
+        if img_file:
+            img_pil       = Image.open(img_file).convert("RGB")
+            img_bgr       = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            annotated_rgb = cv2.cvtColor(detect(img_bgr), cv2.COLOR_BGR2RGB)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Original")
+                st.image(img_pil, use_container_width=True)
+            with col2:
+                st.subheader("Detections")
+                st.image(annotated_rgb, use_container_width=True)
+
+    else:  # Continuous Stream
+        st.caption("Continuous stream uses the local camera via OpenCV.")
+        run         = st.toggle("Start stream")
+        placeholder = st.empty()
+
+        if run:
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                st.error("Could not open webcam.")
+            else:
+                stop = st.button("⏹ Stop")
+                while not stop:
+                    ret, frame = cap.read()
+                    if not ret:
+                        st.warning("No frame received.")
+                        break
+                    placeholder.image(
+                        cv2.cvtColor(detect(frame), cv2.COLOR_BGR2RGB),
+                        use_container_width=True,
+                        channels="RGB",
+                    )
+                cap.release()
