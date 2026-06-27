@@ -1,5 +1,5 @@
 import streamlit as st
-import opencv-python-headless==4.10.0.84
+import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
