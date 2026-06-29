@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
+from pathlib import Path
+
+IMAGES_DIR = Path("Images")
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="YOLO26 Detector", layout="wide")
@@ -21,7 +24,7 @@ with st.sidebar:
     st.header("**Settings**")
     confidence = st.slider("**Confidence threshold**", 0.1, 1.0, 0.25, 0.05)
     iou        = st.slider("**NMS IoU threshold**",    0.1, 1.0, 0.5, 0.05)
-    source     = st.radio("**Input source**", ["Image", "Video", "Webcam"])
+    source     = st.radio("**Input source**", ["Upload an Image", "Sample Images", "Video", "Webcam"])
     if source in ("Video", "Webcam"):
         skip = st.slider("**Process every N frames**", 1, 8, 2)
 
@@ -52,7 +55,7 @@ def show_counts(counts: dict[str, int]) -> None:
         st.markdown("**No detections.**")
 
 # ── IMAGE ──────────────────────────────────────────────────────────────────────
-if source == "Image":
+if source == "Upload an Image":
     uploaded = st.file_uploader("**Upload an image**", type=["jpg", "jpeg", "png", "webp"])
     if uploaded:
         img_pil   = Image.open(uploaded).convert("RGB")
@@ -69,6 +72,48 @@ if source == "Image":
             detections_header(inf_ms)
             st.image(annotated_rgb, use_container_width=True)
             show_counts(counts)
+
+# ── SAMPLE IMAGES ─────────────────────────────────────────────────────────────
+elif source == "Sample Images":
+    for key, val in [("sample_result", None), ("sample_choice", None)]:
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+    exts  = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    files = sorted([f for f in IMAGES_DIR.iterdir() if f.suffix.lower() in exts])
+    if not files:
+        st.warning(f"**No images found in {IMAGES_DIR}/**")
+    else:
+        choice = st.selectbox("**Select a sample image to process**", [f.name for f in files])
+
+        if choice != st.session_state.sample_choice:
+            st.session_state.sample_result = None
+            st.session_state.sample_choice = choice
+
+        if st.button("**▶ Run Detection**"):
+            img_path  = IMAGES_DIR / choice
+            img_pil   = Image.open(img_path).convert("RGB")
+            img_bgr   = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            annotated, counts, inf_ms = detect(img_bgr)
+            st.session_state.sample_result = {
+                "img_pil":       img_pil,
+                "annotated_rgb": cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                "counts":        counts,
+                "inf_ms":        inf_ms,
+                "name":          choice,
+            }
+
+        if st.session_state.sample_result:
+            r = st.session_state.sample_result
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("**Original**")
+                st.image(r["img_pil"], use_container_width=True)
+                st.markdown(f"**{r['name']}  |  {r['img_pil'].width} × {r['img_pil'].height} px**")
+            with col2:
+                detections_header(r["inf_ms"])
+                st.image(r["annotated_rgb"], use_container_width=True)
+                show_counts(r["counts"])
 
 # ── VIDEO ──────────────────────────────────────────────────────────────────────
 elif source == "Video":
