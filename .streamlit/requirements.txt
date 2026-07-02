@@ -1,6 +1,0 @@
-﻿streamlit
-streamlit_file_browser
-Pillow
-numpy
-ultralytics
-opencv-python-headless
