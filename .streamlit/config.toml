@@ -1,1 +1,8 @@
+[theme]
+base = "dark"                      # Set default base: "light" or "dark"
+primaryColor = "#ffcb00"           # Color for widgets, buttons, and sliders
+backgroundColor = "#111111"        # Main body background color
+secondaryBackgroundColor = "#222222" # Sidebar and nested widget background
+textColor = "#ffffff"              # Text color
+font = "sans-serif"                # Typography choices
 
