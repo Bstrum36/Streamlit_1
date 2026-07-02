@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_file_browser import st_file_browser
 import cv2
 import numpy as np
 import tempfile
