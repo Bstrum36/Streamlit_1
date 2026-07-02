@@ -1,4 +1,5 @@
 ﻿streamlit
+streamlit_file_browser
 Pillow
 opencv-python-headless
 numpy
