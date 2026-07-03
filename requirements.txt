@@ -1,5 +1,7 @@
 streamlit
 streamlit_file_browser
+av
+streamlit-webrtc
 Pillow
 numpy
 opencv-python-headless
