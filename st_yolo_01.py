@@ -3,10 +3,13 @@ import cv2
 import numpy as np
 import tempfile
 import os
+import threading
 from io import BytesIO
 from PIL import Image
 from ultralytics import YOLO
 from pathlib import Path
+import av
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
 
 def model_maker(msize, mtask):
@@ -175,6 +178,35 @@ def show_counts(counts: dict[str, int]) -> None:
     else:
         st.markdown("**No detections.**")
 
+class YOLOProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.confidence = 0.25
+        self.iou = 0.5
+        self.skip = 2
+        self._lock = threading.Lock()
+        self.last_counts: dict = {}
+        self.last_inf_ms: float = 0.0
+        self._frame_idx = 0
+        self._last_annotated = None
+
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
+        self._frame_idx += 1
+        if self._frame_idx % self.skip == 0:
+            results = model(img, conf=self.confidence, iou=self.iou)[0]
+            annotated = results.plot()
+            counts: dict = {}
+            if results.boxes is not None and len(results.boxes):
+                for idx in results.boxes.cls.cpu().numpy().astype(int):
+                    name = results.names[idx]
+                    counts[name] = counts.get(name, 0) + 1
+            with self._lock:
+                self.last_counts = counts
+                self.last_inf_ms = results.speed.get("inference", 0.0)
+                self._last_annotated = annotated
+        annotated = self._last_annotated if self._last_annotated is not None else img
+        return av.VideoFrame.from_ndarray(annotated, format="bgr24")
+
 # ── IMAGE / SAMPLE ─────────────────────────────────────────────────────────────
 if source in ("Upload an Image", "Sample Images"):
     if input_file:
@@ -276,34 +308,18 @@ elif source == "Webcam":
                                    key="dl_btn_cam")
 
     else:  # Continuous Stream
-        st.caption("**Continuous stream uses the local camera via OpenCV.**")
-        run               = st.toggle("**Start stream**")
-        time_placeholder  = st.empty()
-        frame_placeholder = st.empty()
-        count_placeholder = st.empty()
-
-        if run:
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("**Could not open webcam.**")
-            else:
-                stop      = st.button("**⏹ Stop**")
-                frame_idx = 0
-                while not stop:
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.warning("**No frame received.**")
-                        break
-                    if frame_idx % skip == 0:
-                        annotated, counts, inf_ms = detect(frame)
-                        with time_placeholder.container():
-                            detections_header(inf_ms)
-                        frame_placeholder.image(
-                            cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                            use_container_width=True,
-                            channels="RGB",
-                        )
-                        with count_placeholder.container():
-                            show_counts(counts)
-                    frame_idx += 1
-                cap.release()
+        ctx = webrtc_streamer(
+            key="yolo-webrtc",
+            video_processor_factory=YOLOProcessor,
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            media_stream_constraints={"video": True, "audio": False},
+        )
+        if ctx.video_processor:
+            ctx.video_processor.confidence = confidence
+            ctx.video_processor.iou = iou
+            ctx.video_processor.skip = skip
+            with ctx.video_processor._lock:
+                counts = ctx.video_processor.last_counts.copy()
+                inf_ms = ctx.video_processor.last_inf_ms
+            detections_header(inf_ms)
+            show_counts(counts)
