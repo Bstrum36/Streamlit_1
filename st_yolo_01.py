@@ -30,7 +30,6 @@ def model_maker(msize, mtask):
     str
         Model name, e.g. "yolo26n", "yolo26s-seg", "yolo26x-pose".
     """
-    # --- validate size ---
     if not isinstance(msize, str) or len(msize) != 1:
         raise ValueError("msize must be a single character string.")
 
@@ -39,14 +38,9 @@ def model_maker(msize, mtask):
     if msize not in valid_sizes:
         raise ValueError(f"msize must be one of {sorted(valid_sizes)}, got '{msize}'.")
 
-    # --- validate task ---
     if not isinstance(mtask, str):
         raise ValueError("mtask must be a string.")
 
-    # Map task -> YOLO suffix
-    # Note: YOLO doesn't natively distinguish "semantic" vs "instance"
-    # segmentation (it only ships instance segmentation, "-seg"), so both
-    # are mapped to "-seg" here as a reasonable assumption.
     task_map = {
         "detection": "",
         "instance segmentation": "-seg",
@@ -62,9 +56,8 @@ def model_maker(msize, mtask):
             f"mtask must be one of {list(task_map.keys())} (case-insensitive), got '{mtask}'."
         )
 
-    suffix = task_map[key]
+    return f"yolo26{msize}{task_map[key]}"
 
-    return f"yolo26{msize}{suffix}"
 
 IMAGES_DIR = Path("Images")
 
@@ -76,6 +69,7 @@ st.markdown("""
 <style>
 button[data-testid="stBaseButton-secondary"] {
     background-color: #e8e8e8 !important;
+    color: #1a73e8 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -85,21 +79,23 @@ button[data-testid="stBaseButton-secondary"] {
 def load_model(path: str):
     return YOLO(path)
 
-# ── Sidebar controls ───────────────────────────────────────────────────────────
+# ── Session state defaults ─────────────────────────────────────────────────────
 if "show_model_picker" not in st.session_state:
     st.session_state.show_model_picker = False
-
-# Initialize model selection defaults
 if "sel_task" not in st.session_state:
     st.session_state.sel_task = "Instance Segmentation"
 if "sel_size" not in st.session_state:
     st.session_state.sel_size = "Large"
 
-with st.sidebar:
+# ── Layout: controls column | main content column ─────────────────────────────
+col_ctrl, col_main = st.columns([1, 4])
+
+# ── Controls column (mirrors sidebar layout) ───────────────────────────────────
+with col_ctrl:
     st.header("**Settings**")
     if st.button(":blue[**Select Model**]"):
         st.session_state.show_model_picker = not st.session_state.show_model_picker
-    
+
     if st.session_state.show_model_picker:
         st.selectbox("**Function**", [
             "Detection",
@@ -109,28 +105,30 @@ with st.sidebar:
             "Orientation Detection",
             "Classification",
         ], key="sel_task")
-        
+
         st.selectbox("**Model Size**", [
             "Nano", "Small", "Medium", "Large", "Xtra Large",
         ], key="sel_size")
-    
+
     st.divider()
     confidence = st.slider("**Confidence threshold**", 0.1, 1.0, 0.25, 0.05)
-    iou        = st.slider("**NMS IoU threshold**",    0.1, 1.0, 0.5, 0.05)
-    
+    iou        = st.slider("**NMS IoU threshold**",    0.1, 1.0, 0.5,  0.05)
+
     st.divider()
     source = st.radio("**Input source**", ["Upload an Image", "Sample Images", "Video", "Webcam"])
-    
-    # Unified input picker
+
     input_file = None
     if source == "Upload an Image":
         input_file = st.file_uploader("**Upload an image**", type=["jpg", "jpeg", "png", "webp"])
     elif source == "Sample Images":
-        exts  = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+        exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
         if IMAGES_DIR.exists():
             files = sorted([f for f in IMAGES_DIR.iterdir() if f.suffix.lower() in exts])
             if files:
-                input_file = st.selectbox("**Select a sample image**", files, format_func=lambda x: x.name, index=None, placeholder="Choose an image…")
+                input_file = st.selectbox(
+                    "**Select a sample image**", files,
+                    format_func=lambda x: x.name, index=None, placeholder="Choose an image…"
+                )
             else:
                 st.warning(f"**No images found in {IMAGES_DIR}/**")
         else:
@@ -143,16 +141,17 @@ with st.sidebar:
     else:
         cam_mode = "Single Frame"
 
+    skip = 2
     if source in ("Video", "Webcam"):
         skip = st.slider("**Process every N frames**", 1, 8, 2)
 
-# --- Create model using model_maker and sidebar results ---
-size_map = {"Nano": "n", "Small": "s", "Medium": "m", "Large": "l", "Xtra Large": "x"}
+# ── Model loading ──────────────────────────────────────────────────────────────
+size_map    = {"Nano": "n", "Small": "s", "Medium": "m", "Large": "l", "Xtra Large": "x"}
 m_size_code = size_map.get(st.session_state.sel_size, "l")
-model_name = model_maker(m_size_code, st.session_state.sel_task)
-model = load_model(f"{model_name}.pt")
+model_name  = model_maker(m_size_code, st.session_state.sel_task)
+model       = load_model(f"{model_name}.pt")
 
-# ── Helper: run model, return annotated frame + label counts + inference ms ────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 def detect(frame_bgr: np.ndarray):
     results   = model(frame_bgr, conf=confidence, iou=iou)[0]
     annotated = results.plot()
@@ -207,119 +206,122 @@ class YOLOProcessor(VideoProcessorBase):
         annotated = self._last_annotated if self._last_annotated is not None else img
         return av.VideoFrame.from_ndarray(annotated, format="bgr24")
 
-# ── IMAGE / SAMPLE ─────────────────────────────────────────────────────────────
-if source in ("Upload an Image", "Sample Images"):
-    if input_file:
-        img_pil   = Image.open(input_file).convert("RGB")
-        img_bgr   = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-        annotated, counts, inf_ms = detect(img_bgr)
-        annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+# ── Main content column ────────────────────────────────────────────────────────
+with col_main:
 
-        st.caption(f"**Model: `{model_name}` &nbsp;|&nbsp; Task: {st.session_state.sel_task} &nbsp;|&nbsp; Size: {st.session_state.sel_size}**")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("**Original**")
-            st.image(img_pil, use_container_width=True)
-            st.markdown(f"**{input_file.name}  |  {img_pil.width} × {img_pil.height} px**")
-        with col2:
-            detections_header(inf_ms)
-            st.image(annotated_rgb, use_container_width=True)
-            show_counts(counts)
-            if isinstance(input_file, Path):
-                orig_ext = input_file.suffix.lower()
-                dl_name = f"{input_file.stem}_detected{orig_ext}"
-            else:
-                orig_ext = Path(input_file.name).suffix.lower() or ".png"
-                dl_name = f"{Path(input_file.name).stem}_detected{orig_ext}"
-            fmt = orig_ext.lstrip(".").upper()
-            fmt = "JPEG" if fmt in ("JPG", "JPEG") else fmt
-            buf = BytesIO()
-            Image.fromarray(annotated_rgb).save(buf, format=fmt)
-            st.download_button(":blue[**Download**]", data=buf.getvalue(),
-                               file_name=dl_name, mime=f"image/{orig_ext.lstrip('.')}",
-                               key="dl_btn_img")
-    else:
-        st.info("**Please select or upload an image in the sidebar.**")
-
-# ── VIDEO ──────────────────────────────────────────────────────────────────────
-elif source == "Video":
-    if input_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp.write(input_file.read())
-            tmp_path = tmp.name
-
-        cap   = cv2.VideoCapture(tmp_path)
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps   = cap.get(cv2.CAP_PROP_FPS) or 30
-
-        st.info(f"**Video: {total} frames at {fps:.1f} fps — processing every {skip} frame(s).**")
-        time_placeholder  = st.empty()
-        frame_placeholder = st.empty()
-        count_placeholder = st.empty()
-        stop = st.button("**⏹ Stop**")
-
-        frame_idx = 0
-        while cap.isOpened() and not stop:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_idx % skip == 0:
-                annotated, counts, inf_ms = detect(frame)
-                with time_placeholder.container():
-                    detections_header(inf_ms)
-                frame_placeholder.image(
-                    cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
-                    use_container_width=True,
-                    caption=f"**Frame {frame_idx}/{total}**"
-                )
-                with count_placeholder.container():
-                    show_counts(counts)
-            frame_idx += 1
-
-        cap.release()
-        os.unlink(tmp_path)
-        st.success("**Done.**")
-    else:
-        st.info("**Please upload a video.**")
-
-# ── WEBCAM ─────────────────────────────────────────────────────────────────────
-elif source == "Webcam":
-    if cam_mode == "Single Frame":
-        img_file = st.camera_input("**Take a photo**")
-        if img_file:
-            img_pil   = Image.open(img_file).convert("RGB")
-            img_bgr   = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    # ── IMAGE / SAMPLE ─────────────────────────────────────────────────────────
+    if source in ("Upload an Image", "Sample Images"):
+        if input_file:
+            img_pil       = Image.open(input_file).convert("RGB")
+            img_bgr       = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
             annotated, counts, inf_ms = detect(img_bgr)
             annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
 
-            col1, col2 = st.columns(2)
-            with col1:
+            st.caption(f"**Model: `{model_name}` &nbsp;|&nbsp; Task: {st.session_state.sel_task} &nbsp;|&nbsp; Size: {st.session_state.sel_size}**")
+            c1, c2 = st.columns(2)
+            with c1:
                 st.subheader("**Original**")
                 st.image(img_pil, use_container_width=True)
-                st.markdown(f"**Camera capture  |  {img_pil.width} × {img_pil.height} px**")
-            with col2:
+                st.markdown(f"**{input_file.name}  |  {img_pil.width} × {img_pil.height} px**")
+            with c2:
                 detections_header(inf_ms)
                 st.image(annotated_rgb, use_container_width=True)
                 show_counts(counts)
+                if isinstance(input_file, Path):
+                    orig_ext = input_file.suffix.lower()
+                    dl_name  = f"{input_file.stem}_detected{orig_ext}"
+                else:
+                    orig_ext = Path(input_file.name).suffix.lower() or ".png"
+                    dl_name  = f"{Path(input_file.name).stem}_detected{orig_ext}"
+                fmt = orig_ext.lstrip(".").upper()
+                fmt = "JPEG" if fmt in ("JPG", "JPEG") else fmt
                 buf = BytesIO()
-                Image.fromarray(annotated_rgb).save(buf, format="PNG")
+                Image.fromarray(annotated_rgb).save(buf, format=fmt)
                 st.download_button(":blue[**Download**]", data=buf.getvalue(),
-                                   file_name="capture_detected.png", mime="image/png",
-                                   key="dl_btn_cam")
+                                   file_name=dl_name, mime=f"image/{orig_ext.lstrip('.')}",
+                                   key="dl_btn_img")
+        else:
+            st.info("**Please select or upload an image using the controls on the left.**")
 
-    else:  # Continuous Stream
-        ctx = webrtc_streamer(
-            key="yolo-webrtc",
-            video_processor_factory=YOLOProcessor,
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={"video": True, "audio": False},
-        )
-        if ctx.video_processor:
-            ctx.video_processor.confidence = confidence
-            ctx.video_processor.iou = iou
-            ctx.video_processor.skip = skip
-            with ctx.video_processor._lock:
-                counts = ctx.video_processor.last_counts.copy()
-                inf_ms = ctx.video_processor.last_inf_ms
-            detections_header(inf_ms)
-            show_counts(counts)
+    # ── VIDEO ───────────────────────────────────────────────────────────────────
+    elif source == "Video":
+        if input_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                tmp.write(input_file.read())
+                tmp_path = tmp.name
+
+            cap   = cv2.VideoCapture(tmp_path)
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps   = cap.get(cv2.CAP_PROP_FPS) or 30
+
+            st.info(f"**Video: {total} frames at {fps:.1f} fps — processing every {skip} frame(s).**")
+            time_placeholder  = st.empty()
+            frame_placeholder = st.empty()
+            count_placeholder = st.empty()
+            stop = st.button("**⏹ Stop**")
+
+            frame_idx = 0
+            while cap.isOpened() and not stop:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if frame_idx % skip == 0:
+                    annotated, counts, inf_ms = detect(frame)
+                    with time_placeholder.container():
+                        detections_header(inf_ms)
+                    frame_placeholder.image(
+                        cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
+                        use_container_width=True,
+                        caption=f"**Frame {frame_idx}/{total}**"
+                    )
+                    with count_placeholder.container():
+                        show_counts(counts)
+                frame_idx += 1
+
+            cap.release()
+            os.unlink(tmp_path)
+            st.success("**Done.**")
+        else:
+            st.info("**Please upload a video using the controls on the left.**")
+
+    # ── WEBCAM ──────────────────────────────────────────────────────────────────
+    elif source == "Webcam":
+        if cam_mode == "Single Frame":
+            img_file = st.camera_input("**Take a photo**")
+            if img_file:
+                img_pil       = Image.open(img_file).convert("RGB")
+                img_bgr       = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+                annotated, counts, inf_ms = detect(img_bgr)
+                annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.subheader("**Original**")
+                    st.image(img_pil, use_container_width=True)
+                    st.markdown(f"**Camera capture  |  {img_pil.width} × {img_pil.height} px**")
+                with c2:
+                    detections_header(inf_ms)
+                    st.image(annotated_rgb, use_container_width=True)
+                    show_counts(counts)
+                    buf = BytesIO()
+                    Image.fromarray(annotated_rgb).save(buf, format="PNG")
+                    st.download_button(":blue[**Download**]", data=buf.getvalue(),
+                                       file_name="capture_detected.png", mime="image/png",
+                                       key="dl_btn_cam")
+
+        else:  # Continuous Stream
+            ctx = webrtc_streamer(
+                key="yolo-webrtc",
+                video_processor_factory=YOLOProcessor,
+                rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+                media_stream_constraints={"video": True, "audio": False},
+            )
+            if ctx.video_processor:
+                ctx.video_processor.confidence = confidence
+                ctx.video_processor.iou        = iou
+                ctx.video_processor.skip       = skip
+                with ctx.video_processor._lock:
+                    counts = ctx.video_processor.last_counts.copy()
+                    inf_ms = ctx.video_processor.last_inf_ms
+                detections_header(inf_ms)
+                show_counts(counts)
