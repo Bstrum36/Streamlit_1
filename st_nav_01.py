@@ -43,6 +43,16 @@ st.markdown("""
         background-color: #e8e8e8 !important;
         color: #1a73e8 !important;
     }
+    .stTabs [data-baseweb="tab-list"] {
+    background-color: #1a1a2e;
+    padding: 0.3rem 1rem;
+    gap: 0.5rem;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+}
+.stTabs [data-baseweb="tab"] {
+    flex-shrink: 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,8 +141,8 @@ with tab_instructions:
         Select Model task from pull down menu
         - **Object Detection**
         - **Segmentations**
-        - **Pose Estimation**
-        - **Orientation Estimation** (Try this with streaming or a video and the nano model 😎 )
+        - **Pose Estimation** (Try this with streaming or a video and the nano model 😎 )
+        - **Orientation Estimation** 
         - **Classification**
     2. Select Model size from pull down menu.
         - **Nano**
